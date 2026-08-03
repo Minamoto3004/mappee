@@ -9,7 +9,7 @@
 <style>
 :root{
   --brand:#0e7490; --brand-dark:#155e75; --brand-light:#ecfeff;
-  --open:#15803d; --closed:#64748b; --unknown:#0369a1; --hs:#dc2626;
+  --open:#15803d; --closed:#dc2626; --unknown:#0369a1; --hs:#1f2937;
   --ink:#0f172a; --ink-soft:#475569; --line:#e2e8f0; --bg:#ffffff;
   --radius:14px; --shadow:0 4px 20px rgba(15,23,42,.14);
   font-size:16px;
@@ -27,8 +27,7 @@ header{position:absolute;top:0;left:0;right:0;z-index:20;
 .brand small{font-weight:600;color:var(--ink-soft);font-size:.72rem;letter-spacing:.04em;vertical-align:2px}
 .stats{font-size:.82rem;color:var(--ink-soft)}
 .stats b{color:var(--open)}
-.chips{display:flex;gap:6px;margin-top:9px;overflow-x:auto;scrollbar-width:none;padding-bottom:2px}
-.chips::-webkit-scrollbar{display:none}
+.chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:9px}
 .chip{flex:0 0 auto;border:1.5px solid var(--line);background:var(--bg);color:var(--ink-soft);
   border-radius:999px;padding:5px 12px;font-size:.8rem;font-weight:600;cursor:pointer;
   transition:all .15s;user-select:none;-webkit-tap-highlight-color:transparent}
@@ -94,7 +93,7 @@ header{position:absolute;top:0;left:0;right:0;z-index:20;
     <button class="chip" data-f="pmr">Accès PMR</button>
     <button class="chip" data-f="baby">Table à langer</button>
     <button class="chip" data-f="night">Ouvert la nuit</button>
-    <button class="chip" data-f="nourinoir">Sans urinoirs&nbsp;H</button>
+    <button class="chip" data-f="femmes">Accessible aux femmes</button>
     <button class="chip warn" data-f="hs">Afficher hors service</button>
   </div>
 </div></header>
@@ -102,7 +101,8 @@ header{position:absolute;top:0;left:0;right:0;z-index:20;
 <div class="legend">
   <span class="dot" style="background:var(--open)"></span>Ouvert<br>
   <span class="dot" style="background:var(--closed)"></span>Fermé<br>
-  <span class="dot" style="background:var(--unknown)"></span>Horaires inconnus
+  <span class="dot" style="background:var(--unknown)"></span>Horaires inconnus<br>
+  <span class="dot" style="background:var(--hs)"></span>Hors service
 </div>
 
 <div class="notice" id="notice"></div>
@@ -196,10 +196,10 @@ function status(t){
   if(!t.segs) return "unknown";
   return isOpen(t.segs, new Date()) ? "open" : "closed";
 }
-const COLORS = {open:"#15803d", closed:"#64748b", unknown:"#0369a1", hs:"#dc2626"};
+const COLORS = {open:"#15803d", closed:"#dc2626", unknown:"#0369a1", hs:"#1f2937"};
 const LABELS = {open:"OUVERT", closed:"FERMÉ", unknown:"HORAIRES INCONNUS", hs:"HORS SERVICE"};
 
-const filters = {open:false, pmr:false, baby:false, night:false, nourinoir:false, hs:false};
+const filters = {open:false, pmr:false, baby:false, night:false, femmes:false, hs:false};
 function visible(t){
   const st = status(t);
   if(st==="hs" && !filters.hs) return false;
@@ -207,7 +207,7 @@ function visible(t){
   if(filters.pmr && !(t.wheelchair==="yes"||t.wheelchair==="limited")) return false;
   if(filters.baby && t.changing_table!==true) return false;
   if(filters.night && !isNight(t.segs)) return false;
-  if(filters.nourinoir && t.male_only) return false;
+  if(filters.femmes && t.male_only) return false;   // exclut les urinoirs « hommes uniquement »
   return true;
 }
 const geojson = ()=>({ type:"FeatureCollection", features: DATA.filter(visible).map(t=>({
