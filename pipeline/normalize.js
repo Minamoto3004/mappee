@@ -222,27 +222,78 @@ export function fromMontpellier(f) {
   };
 }
 
-/** Adaptateur générique « position + découverte » pour les portails dont le
-    schéma n'a pas pu être vérifié (Bordeaux, Strasbourg). Ingère la position
-    et un nom plausible ; JOURNALISE les clés du premier objet pour révéler
-    le schéma réel dans le log GitHub Actions → enrichissement au run suivant. */
-export function fromOdsPosition(srcKey, cityLabel) {
-  let logged = false;
-  return (f) => {
-    const c = pointOf(f); if (!c) return null;
-    if (!logged) { logged = true;
-      console.log(`  [schéma ${srcKey}] clés observées : ${Object.keys(f.properties ?? {}).join(", ") || "(aucune)"}`);
-    }
-    const p = propLookup(f.properties ?? {});
-    const name = p("nom", "name", "libelle", "designation", "adresse", "localisation");
-    return {
-      id: `${srcKey}:${c[0].toFixed(6)},${c[1].toFixed(6)}`,
-      src: srcKey, lon: +c[0], lat: +c[1],
-      name: name ? String(name) : null,
-      address: name ? `${name}, ${cityLabel}` : null,
-      fee: null, hours: null, wheelchair: null, changing_table: null,
-      male_only: false, supervised: null, dry: null, access: "yes", oos: false,
-    };
+/* booléen tolérant : true/"true"/1/"1"/"OUI"/"oui"/"X" → true ; inverse → false ; sinon null */
+const looseBool = (v) => {
+  if (v === true || v === 1) return true;
+  if (v === false || v === 0) return false;
+  const s = String(v ?? "").trim().toLowerCase();
+  if (/^(oui|true|1|x|vrai)$/.test(s)) return true;
+  if (/^(non|false|0|faux)$/.test(s)) return false;
+  return null;
+};
+
+let bdxLogged = false;
+/** Toilettes Bordeaux (bor_sigsanitaire) — schéma révélé par le run de découverte :
+    geo_point_2d, gml_id, gid, geom_o, adresse, type, handi, cdate, mdate. */
+export function fromBordeaux(f) {
+  const c = pointOf(f); if (!c) return null;
+  if (!bdxLogged) { bdxLogged = true;
+    console.log(`  [valeurs bordeaux] ${JSON.stringify(f.properties).slice(0, 300)}`);
+  }
+  const p = propLookup(f.properties ?? {});
+  const type = p("type") ? String(p("type")) : "Sanitaire";
+  const handi = looseBool(p("handi"));
+  return {
+    id: "bordeaux:" + (p("gid") ?? p("gml_id") ?? `${c[0].toFixed(6)},${c[1].toFixed(6)}`),
+    src: "bordeaux", lon: +c[0], lat: +c[1],
+    name: p("adresse") ? `${type} — ${p("adresse")}` : type,
+    address: p("adresse") ? `${p("adresse")}, Bordeaux` : null,
+    fee: null, hours: null,
+    wheelchair: handi === true ? "yes" : handi === false ? "no" : null,
+    changing_table: null,
+    male_only: /urinoir|vespasienne/i.test(type),
+    supervised: null, dry: null, access: "yes", oos: false,
+  };
+}
+
+let stbLogged = false;
+/** Toilettes publiques Strasbourg (toilette_publique) — schéma révélé :
+    id_tp, nom_tp, type_tp, regie, usage, horaire, acces_pmr, saison,
+    com_saison, etat. */
+export function fromStrasbourg(f) {
+  const c = pointOf(f); if (!c) return null;
+  if (!stbLogged) { stbLogged = true;
+    console.log(`  [valeurs strasbourg] ${JSON.stringify(f.properties).slice(0, 300)}`);
+  }
+  const p = propLookup(f.properties ?? {});
+  const horaire = p("horaire") ? String(p("horaire")) : null;
+  // essaie la notation française ("7h-20h", "24h/24") puis le format à deux-points ("07:00 - 20:00")
+  let hours = frHours(horaire, null);
+  if (!hours && horaire) {
+    const m = horaire.match(/(\d{1,2})[:h](\d{2})?\s*[-–\/]\s*(\d{1,2})[:h](\d{2})?/);
+    if (m) hours = `Mo-Su ${m[1].padStart(2,"0")}:${m[2]??"00"}-${m[3].padStart(2,"0")}:${m[4]??"00"}`;
+  }
+  const pmr = looseBool(p("acces_pmr"));
+  const etat = p("etat") ? String(p("etat")) : "";
+  const saison = p("saison") ? String(p("saison")) : null;
+  const noteParts = [];
+  if (!hours && horaire) noteParts.push(`Horaires : ${horaire}`);
+  if (saison && !/toute l'ann|annuel/i.test(saison))
+    noteParts.push(`Ouverture saisonnière : ${saison}${p("com_saison") ? " — " + p("com_saison") : ""}`);
+  const type = p("type_tp") ? String(p("type_tp")) : "Toilettes publiques";
+  return {
+    id: "strasbourg:" + (p("id_tp") ?? `${c[0].toFixed(6)},${c[1].toFixed(6)}`),
+    src: "strasbourg", lon: +c[0], lat: +c[1],
+    name: p("nom_tp") ? `${p("nom_tp")}` : type,
+    address: p("nom_tp") ? `${p("nom_tp")}, Strasbourg` : null,
+    fee: null, hours,
+    wheelchair: pmr === true ? "yes" : pmr === false ? "no" : null,
+    changing_table: null,
+    male_only: /urinoir|vespasienne/i.test(type),
+    supervised: /gard|surveill/i.test(type) ? true : null,
+    dry: null, access: "yes",
+    oos: /hors service|condamn|ferm[ée] d[ée]finitiv/i.test(etat),
+    note: noteParts.length ? noteParts.join(" · ") : null,
   };
 }
 

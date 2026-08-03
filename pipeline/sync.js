@@ -5,7 +5,7 @@
    Le fichier de sortie est trié par id : les diffs Git restent lisibles. */
 import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
 import { fromOsm, fromLyon, fromParis, fromMarseille, fromToulouse,
-         fromNantes, fromMontpellier, fromOdsPosition } from "./normalize.js";
+         fromNantes, fromMontpellier, fromBordeaux, fromStrasbourg } from "./normalize.js";
 import { dedupe } from "./dedupe.js";
 
 /* serveur principal + miroir de secours : si l'un sature (429/504 répétés),
@@ -36,12 +36,12 @@ const MUNICIPAL_SOURCES = [
   { key: "montpellier", label: "Montpellier (3M)",
     url: "https://data.montpellier3m.fr/sites/default/files/ressources/MMM_MTP_WC_Publics.json",
     adapt: fromMontpellier },
-  { key: "bordeaux",    label: "Bordeaux (export ODS — schéma en découverte)",
+  { key: "bordeaux",    label: "Bordeaux (export ODS)",
     url: "https://opendata.bordeaux-metropole.fr/api/explore/v2.1/catalog/datasets/bor_sigsanitaire/exports/geojson",
-    adapt: fromOdsPosition("bordeaux", "Bordeaux") },
-  { key: "strasbourg",  label: "Strasbourg (export ODS — schéma en découverte)",
+    adapt: fromBordeaux },
+  { key: "strasbourg",  label: "Strasbourg (export ODS)",
     url: "https://data.strasbourg.eu/api/explore/v2.1/catalog/datasets/toilette_publique/exports/geojson",
-    adapt: fromOdsPosition("strasbourg", "Strasbourg") },
+    adapt: fromStrasbourg },
 ];
 const OUT = new URL("../web/data/toilets.geojson", import.meta.url).pathname;
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
