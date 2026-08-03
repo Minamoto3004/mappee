@@ -7,7 +7,12 @@ import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
 import { fromOsm, fromLyon, fromParis } from "./normalize.js";
 import { dedupe } from "./dedupe.js";
 
-const OVERPASS = process.env.OVERPASS_URL ?? "https://overpass-api.de/api/interpreter";
+/* serveur principal + miroir de secours : si l'un sature (429/504 répétés),
+   on bascule sur l'autre avant d'abandonner le run */
+const OVERPASS_URLS = process.env.OVERPASS_URL
+  ? [process.env.OVERPASS_URL]
+  : ["https://overpass-api.de/api/interpreter",
+     "https://overpass.kumi.systems/api/interpreter"];
 const LYON_URL = "https://www.data.gouv.fr/api/1/datasets/r/ac778842-76fd-48ac-8697-3eec0bfd9ce5";
 const PARIS_URL = "https://www.data.gouv.fr/api/1/datasets/r/4821bd30-9fcd-410e-8779-f7ddc1aab5f6";
 const OUT = new URL("../web/data/toilets.geojson", import.meta.url).pathname;
@@ -16,7 +21,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const args = {};
 for (let i = 2; i < process.argv.length; i += 2) args[process.argv[i].replace(/^--/, "")] = process.argv[i + 1];
 
-async function overpassDept(dept, attempt = 0) {
+async function overpassDept(dept) {
   /* ref:INSEE en préfixe (~"^69") et non en égalité stricte : la Métropole de
      Lyon (69M) est une collectivité séparée du département du Rhône depuis
      2015 — une égalité stricte exclurait Lyon et sa métropole. Idem pour
@@ -25,25 +30,39 @@ async function overpassDept(dept, attempt = 0) {
     area["boundary"="administrative"]["admin_level"="6"]["ref:INSEE"~"^${dept}"]->.d;
     nwr["amenity"="toilets"](area.d);
     out center tags;`;
-  const res = await fetch(OVERPASS, {
-    method: "POST",
-    body: "data=" + encodeURIComponent(query),
-    headers: { "Content-Type": "application/x-www-form-urlencoded",
-               "User-Agent": "Mappee/1.0 (+https://github.com/)" },
-  });
-  if ((res.status === 429 || res.status === 504) && attempt < 4) {
-    const wait = 2 ** attempt * 15000;
-    console.log(`  Overpass ${res.status} → nouvelle tentative dans ${wait / 1000}s`);
-    await sleep(wait);
-    return overpassDept(dept, attempt + 1);
+  let lastErr;
+  for (const url of OVERPASS_URLS) {
+    for (let attempt = 0; attempt < 4; attempt++) {
+      let res;
+      try {
+        res = await fetch(url, {
+          method: "POST",
+          body: "data=" + encodeURIComponent(query),
+          headers: { "Content-Type": "application/x-www-form-urlencoded",
+                     "User-Agent": "Mappee/1.0 (+https://github.com/)" },
+        });
+      } catch (e) {                       // panne réseau → miroir suivant
+        lastErr = e;
+        console.log(`  ${new URL(url).hostname} injoignable → miroir suivant`);
+        break;
+      }
+      if (res.ok) {
+        const data = await res.json();
+        return data.elements.map((e) => ({
+          properties: { "@id": e.type + "/" + e.id, ...e.tags },
+          geometry: { type: "Point",
+            coordinates: e.type === "node" ? [e.lon, e.lat] : [e.center.lon, e.center.lat] },
+        }));
+      }
+      lastErr = new Error(`Overpass ${res.status} (dept ${dept})`);
+      if (res.status !== 429 && res.status !== 504) break;   // erreur non transitoire → miroir
+      const wait = 2 ** attempt * 15000;
+      console.log(`  ${new URL(url).hostname} ${res.status} → nouvelle tentative dans ${wait / 1000}s`);
+      await sleep(wait);
+    }
+    console.log(`  bascule sur le miroir suivant…`);
   }
-  if (!res.ok) throw new Error(`Overpass ${res.status} (dept ${dept})`);
-  const data = await res.json();
-  return data.elements.map((e) => ({
-    properties: { "@id": e.type + "/" + e.id, ...e.tags },
-    geometry: { type: "Point",
-      coordinates: e.type === "node" ? [e.lon, e.lat] : [e.center.lon, e.center.lat] },
-  }));
+  throw lastErr;
 }
 
 // ---- collecte OSM ----
@@ -58,7 +77,7 @@ if (args["osm-file"]) {
     const f = await overpassDept(dept.trim());
     console.log(`  ${f.length} objets`);
     osmFeatures.push(...f);
-    await sleep(10000);
+    await sleep(20000);   // courtoisie renforcée : moins de 429 en heure de pointe
   }
 } else {
   console.error("préciser --depts 69[,38,…] ou --osm-file export.geojson");
