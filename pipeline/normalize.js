@@ -88,6 +88,164 @@ export function fromParis(f, i) {
   };
 }
 
+/* ---- helpers communs aux adaptateurs municipaux ---- */
+
+/** Accès aux propriétés tolérant : casse, accents, espaces/underscores.
+    Nécessaire car les exports Opendatosoft GeoJSON utilisent des noms
+    techniques (accessibilite_pmr) là où le CSV affiche des libellés
+    (« Accessibilité PMR »). */
+export function propLookup(raw) {
+  const norm = (s) => s.toLowerCase().normalize("NFD")
+    .replace(/[̀-ͯ]/g, "").replace(/[^a-z0-9]/g, "");
+  const map = {};
+  for (const k in raw) map[norm(k)] = raw[k];
+  return (...names) => {
+    for (const n of names) { const v = map[norm(n)]; if (v !== undefined && v !== null && v !== "") return v; }
+    return null;
+  };
+}
+
+const FR_DAYS = { lundi:"Mo", mardi:"Tu", mercredi:"We", jeudi:"Th",
+                  vendredi:"Fr", samedi:"Sa", dimanche:"Su" };
+
+/** "9h-19h" / "14h00/22h00" / "24h/24" + jours ("7j/7", "Mardi", "Vendredi Samedi Dimanche")
+    → notation compacte, ou null si inexprimable (texte gardé en note). */
+export function frHours(horaire, jours) {
+  if (!horaire) return null;
+  const h = String(horaire).trim();
+  let days = "Mo-Su";
+  if (jours) {
+    const j = String(jours).toLowerCase();
+    if (!/7\s*\/?\s*j|7j/.test(j)) {
+      const found = Object.keys(FR_DAYS).filter((d) => j.includes(d)).map((d) => FR_DAYS[d]);
+      if (!found.length) return null;         // "jeudi (marché) + manif", "juin/juillet…" → note
+      days = found.join(",");
+    }
+  }
+  if (/24\s*h?\s*\/\s*24|24\/24/.test(h)) return days === "Mo-Su" ? "24/7" : `${days} 00:00-24:00`;
+  const m = h.match(/(\d{1,2})\s*h\s*(\d{2})?\s*[\/–-]\s*(\d{1,2})\s*h\s*(\d{2})?/i);
+  if (!m) return null;
+  return `${days} ${m[1].padStart(2,"0")}:${m[2]??"00"}-${m[3].padStart(2,"0")}:${m[4]??"00"}`;
+}
+
+const pointOf = (f) => {
+  const g = f.geometry;
+  if (!g) return null;
+  if (g.type === "Point") return g.coordinates;
+  if (g.type === "MultiPoint") return g.coordinates[0];   // Toulouse exporte en MultiPoint
+  return null;
+};
+
+/** Sanisettes Marseille (MAMP, Licence Ouverte) — position + nom, pas d'attributs. */
+export function fromMarseille(f) {
+  const p = propLookup(f.properties ?? {});
+  const c = pointOf(f); if (!c) return null;
+  return {
+    id: "marseille:" + (p("objectid") ?? `${c[0].toFixed(6)},${c[1].toFixed(6)}`),
+    src: "marseille", lon: +c[0], lat: +c[1],
+    name: p("Nom") ? `Sanisette — ${p("Nom")}` : "Sanisette",
+    address: p("Adresse") ? `${p("Adresse")}, ${p("Ardt") ?? ""} Marseille`.trim() : null,
+    fee: null, hours: null, wheelchair: null, changing_table: null,
+    male_only: false, supervised: null, dry: null, access: "yes", oos: false,
+    note: "Point d'eau potable à l'extérieur",
+  };
+}
+
+/** Sanisettes Toulouse (Toulouse Métropole, Licence Ouverte) — PMR + type. */
+export function fromToulouse(f) {
+  const p = propLookup(f.properties ?? {});
+  const c = pointOf(f); if (!c) return null;
+  const acc = p("accessibilité", "accessibilite");
+  const type = p("type") ?? "Sanitaire";
+  return {
+    id: "toulouse:" + (p("numero") ?? `${c[0].toFixed(6)},${c[1].toFixed(6)}`),
+    src: "toulouse", lon: +c[0], lat: +c[1],
+    name: p("ADRESSE") ? `${type} — ${p("ADRESSE")}` : type,
+    address: p("ADRESSE") ? `${p("ADRESSE")}, Toulouse` : null,
+    fee: null, hours: null,
+    wheelchair: acc ? (/^non/i.test(acc) ? "no" : "yes") : null,
+    changing_table: null,
+    male_only: /vespasienne/i.test(type),
+    supervised: null, dry: null, access: "yes", oos: false,
+  };
+}
+
+/** Toilettes publiques Nantes Métropole (Licence Ouverte) — le plus riche :
+    horaires texte libre + jours, PMR, tables à langer, statut. */
+export function fromNantes(f) {
+  const p = propLookup(f.properties ?? {});
+  const c = pointOf(f); if (!c) return null;
+  const horaire = p("Horaires d'ouverture", "horaires_d_ouverture", "horaires");
+  const jours = p("Jours d'ouverture", "jours_d_ouverture", "jours");
+  const etat = p("Etat du mobilier", "etat_du_mobilier", "etat") ?? "";
+  const pmr = p("Accessibilité PMR", "accessibilite_pmr");
+  const table = p("Equipement Tables à langer", "equipement_tables_a_langer");
+  const hours = frHours(horaire, jours);
+  return {
+    id: "nantes:" + (p("Identifiant", "identifiant") ?? `${c[0].toFixed(6)},${c[1].toFixed(6)}`),
+    src: "nantes", lon: +c[0], lat: +c[1],
+    name: p("Nom", "nom") ? `Toilettes — ${p("Nom", "nom")}` : "Toilettes publiques",
+    address: p("Commune", "commune") ? `${p("Nom","nom") ?? ""}, ${p("Commune","commune")}`.replace(/^, /,"") : null,
+    fee: null, hours,
+    wheelchair: pmr === true || pmr === "true" ? "yes" : pmr === false || pmr === "false" ? "no" : null,
+    changing_table: table === true || table === "true" ? true : table === false || table === "false" ? false : null,
+    male_only: false, supervised: null, dry: null, access: "yes",
+    oos: /hors service|temporairement ferm/i.test(etat),
+    note: !hours && horaire ? `Horaires : ${horaire}${jours ? " (" + jours + ")" : ""}` : null,
+  };
+}
+
+/** WC publics Montpellier (3M, ODbL) — horaires ouverture/fermeture + PMR. */
+export function fromMontpellier(f) {
+  const p = propLookup(f.properties ?? {});
+  const c = pointOf(f); if (!c) return null;
+  const hO = p("h_ouvert"), hF = p("hfermeture");
+  const valid = (v) => v && !/^nr$/i.test(String(v).trim()) && String(v).trim() !== "";
+  let hours = null;
+  if (valid(hO) && valid(hF)) {
+    const a = String(hO).match(/(\d{1,2})\s*h\s*(\d{2})?/i), b = String(hF).match(/(\d{1,2})\s*h\s*(\d{2})?/i);
+    if (a && b) hours = `Mo-Su ${a[1].padStart(2,"0")}:${a[2]??"00"}-${b[1].padStart(2,"0")}:${b[2]??"00"}`;
+  }
+  const pmr = p("pmr");
+  return {
+    id: "montpellier:" + (p("id") ?? p("objectid") ?? `${c[0].toFixed(6)},${c[1].toFixed(6)}`),
+    src: "montpellier", lon: +c[0], lat: +c[1],
+    name: p("nom") ? `WC public — ${p("nom")}` : "WC public",
+    address: p("nom") ? `${p("nom")}, Montpellier` : null,
+    fee: null, hours,
+    wheelchair: pmr ? (/^pmr$/i.test(String(pmr).trim()) ? "yes" : /non/i.test(pmr) ? "no" : null) : null,
+    changing_table: null, male_only: false, supervised: null, dry: null,
+    access: "yes",
+    oos: p("enservice") ? !/en service/i.test(p("enservice")) : false,
+    indoor: /parking (souterrain|int)/i.test(p("extparkint") ?? "") ? true : null,
+    note: p("gestion") ? `Géré par ${p("gestion")}` : null,
+  };
+}
+
+/** Adaptateur générique « position + découverte » pour les portails dont le
+    schéma n'a pas pu être vérifié (Bordeaux, Strasbourg). Ingère la position
+    et un nom plausible ; JOURNALISE les clés du premier objet pour révéler
+    le schéma réel dans le log GitHub Actions → enrichissement au run suivant. */
+export function fromOdsPosition(srcKey, cityLabel) {
+  let logged = false;
+  return (f) => {
+    const c = pointOf(f); if (!c) return null;
+    if (!logged) { logged = true;
+      console.log(`  [schéma ${srcKey}] clés observées : ${Object.keys(f.properties ?? {}).join(", ") || "(aucune)"}`);
+    }
+    const p = propLookup(f.properties ?? {});
+    const name = p("nom", "name", "libelle", "designation", "adresse", "localisation");
+    return {
+      id: `${srcKey}:${c[0].toFixed(6)},${c[1].toFixed(6)}`,
+      src: srcKey, lon: +c[0], lat: +c[1],
+      name: name ? String(name) : null,
+      address: name ? `${name}, ${cityLabel}` : null,
+      fee: null, hours: null, wheelchair: null, changing_table: null,
+      male_only: false, supervised: null, dry: null, access: "yes", oos: false,
+    };
+  };
+}
+
 /** openinghoursspecification (schema.org) → "Mo-Su 05:00-22:00" */
 export function compactHours(spec) {
   if (!spec) return null;

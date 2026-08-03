@@ -266,7 +266,7 @@ function notice(msg, ms=6000){
 /* ---------- carte ---------- */
 const IGN_STYLE = "https://data.geopf.fr/annexes/ressources/vectorTiles/styles/PLAN.IGN/standard.json";
 const FALLBACK = { version:8, sources:{}, layers:[{id:"bg",type:"background",paint:{"background-color":"#e8ecef"}}] };
-const ATTRIB = '© <a href="https://www.openstreetmap.org/copyright">les contributeurs OpenStreetMap</a> (ODbL) · © <a href="https://www.data.gouv.fr/datasets/toilettes-publiques-de-la-commune-de-lyon">Ville de Lyon</a> (LO 2.0) · Fond © <a href="https://www.ign.fr/">IGN</a>';
+const ATTRIB = '© <a href="https://www.openstreetmap.org/copyright">les contributeurs OpenStreetMap</a> (ODbL) · © <a href="https://github.com/Minamoto3004/mappee#données--licences">collectivités partenaires</a> (LO 2.0 / ODbL) · Fond © <a href="https://www.ign.fr/">IGN</a>';
 
 async function getStyle(){
   try{

@@ -74,7 +74,23 @@ python3 -m http.server -d web 8080      # http://localhost:8080
 ## Données & licences
 
 Base dérivée d'OpenStreetMap → **ODbL** : attribution affichée sur la carte,
-partage à l'identique si redistribution. Ville de Lyon : Licence Ouverte 2.0.
+partage à l'identique si redistribution.
+
+Sources municipales ingérées (registre dans `pipeline/sync.js`, chacune non
+fatale — une source en panne n'empêche pas le run) :
+
+| Ville | Source | Licence | Apport |
+|---|---|---|---|
+| Lyon | data.gouv (Ville de Lyon) | LO 2.0 | horaires, statut |
+| Paris | data.gouv (sanisettes) | LO 2.0 | horaires, PMR, relais bébé |
+| Marseille | data.gouv (MAMP) | LO 2.0 | positions officielles |
+| Toulouse | data.gouv (Toulouse Métropole) | LO 2.0 | PMR, type |
+| Nantes | data.gouv (Nantes Métropole) | LO 2.0 | horaires, PMR, tables à langer, statut |
+| Montpellier | data.montpellier3m.fr | ODbL | horaires, PMR |
+| Bordeaux | export ODS `bor_sigsanitaire` | non précisée | positions (schéma en découverte : voir log de sync) |
+| Strasbourg | export ODS `toilette_publique` | non précisée | positions (schéma en découverte) |
+| Nice | — | pas de licence open data publiée | non ingéré (OSM couvre) |
+| Lille | — | jeu disparu à la migration du portail MEL | non ingéré (OSM couvre) |
 Constat de terrain (août 2026) : le géoréférencement municipal est « à
 l'adresse », OSM « à l'équipement » — d'où la règle de dédoublonnage à deux
 étages documentée dans `pipeline/dedupe.js`. Les appariements douteux sont
