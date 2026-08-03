@@ -7,7 +7,7 @@ on:
     inputs:
       depts:
         description: "Départements INSEE (ex. 69,38)"
-        default: "69"
+        default: "69,75,13,31,06,44,34,67,33,59"
 
 permissions:
   contents: write
@@ -20,7 +20,9 @@ jobs:
       - uses: actions/setup-node@v4
         with: { node-version: 22 }
       - name: Synchroniser
-        run: node pipeline/sync.js --depts "${{ github.event.inputs.depts || '69' }}"
+        # 10 plus grandes villes : Lyon, Paris, Marseille, Toulouse, Nice,
+        # Nantes, Montpellier, Strasbourg, Bordeaux, Lille (départements entiers)
+        run: node pipeline/sync.js --depts "${{ github.event.inputs.depts || '69,75,13,31,06,44,34,67,33,59' }}"
       - name: Committer si changement
         run: |
           git config user.name "mappee-bot"

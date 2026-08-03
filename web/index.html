@@ -96,7 +96,7 @@ header{position:absolute;top:0;left:0;right:0;z-index:20;
 
 <header><div class="hdr-card">
   <div class="hdr-top">
-    <div class="brand">Mappee <small id="city">LYON</small></div>
+    <div class="brand">Mappee <small id="city">FRANCE</small></div>
     <div class="stats" id="stats">chargement…</div>
   </div>
   <div class="chips" id="chips">
@@ -280,8 +280,19 @@ async function loadStates(){
 let map, userPos=null, current=null;
 (async ()=>{
   const [style] = await Promise.all([getStyle(), loadData(), loadStates()]);
+  /* vue France par défaut ; si la géolocalisation est déjà autorisée
+     (visite précédente), on recentre sans rien demander */
   map = new maplibregl.Map({ container:"map", style,
-    center:[4.8357,45.7590], zoom:12.4, attributionControl:false });
+    center:[2.6,46.6], zoom:5.6, attributionControl:false });
+  if (navigator.permissions && navigator.geolocation) {
+    navigator.permissions.query({name:"geolocation"}).then(p=>{
+      if(p.state==="granted")
+        navigator.geolocation.getCurrentPosition(pos=>{
+          userPos=[pos.coords.longitude,pos.coords.latitude];
+          map.flyTo({center:userPos, zoom:13.5, speed:2.2});
+        },()=>{},{ maximumAge:60000, timeout:8000 });
+    }).catch(()=>{});
+  }
   map.addControl(new maplibregl.AttributionControl({compact:true, customAttribution:ATTRIB}));
   map.addControl(new maplibregl.NavigationControl({showCompass:false}), "bottom-right");
   const geo = new maplibregl.GeolocateControl({positionOptions:{enableHighAccuracy:true},trackUserLocation:true});
