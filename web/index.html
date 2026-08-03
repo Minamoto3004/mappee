@@ -13,7 +13,7 @@
 <style>
 :root{
   --brand:#0e7490; --brand-dark:#155e75; --brand-light:#ecfeff;
-  --open:#15803d; --closed:#dc2626; --unknown:#0369a1; --hs:#1f2937;
+  --open:#15803d; --closed:#dc2626; --unknown:#8aa3b8; --hs:#1f2937;
   --ink:#0f172a; --ink-soft:#475569; --line:#e2e8f0; --bg:#ffffff;
   --radius:14px; --shadow:0 4px 20px rgba(15,23,42,.14);
   font-size:16px;
@@ -112,7 +112,7 @@ header{position:absolute;top:0;left:0;right:0;z-index:20;
 <div class="legend">
   <span class="dot" style="background:var(--open)"></span>Ouvert<br>
   <span class="dot" style="background:var(--closed)"></span>Fermé<br>
-  <span class="dot" style="background:var(--unknown)"></span>Horaires inconnus<br>
+  <span class="dot" style="background:var(--unknown);width:8px;height:8px"></span>Horaires non renseignés<br>
   <span class="dot" style="background:var(--hs)"></span>Hors service
 </div>
 
@@ -177,12 +177,34 @@ function parseHours(str){
   const segs = [];
   for(const raw of str.split(";")){
     const part = raw.trim();
-    if(!part || /^(PH|SH)\b/i.test(part) || /\boff\b/i.test(part)) continue;
-    const m = part.match(/^([A-Za-z]{2})(?:-([A-Za-z]{2}))?\s+(\d{1,2}):(\d{2})-(\d{1,2}):(\d{2})$/);
-    if(!m) return null;           // syntaxe OSM avancée non gérée → statut inconnu, texte brut affiché
-    const d1 = DAYS.indexOf(m[1]), d2 = m[2] ? DAYS.indexOf(m[2]) : d1;
-    if(d1<0||d2<0) return null;
-    segs.push({d1,d2,o:+m[3]*60+ +m[4],c:+m[5]*60+ +m[6]});
+    if(!part || /^(PH|SH)\b/i.test(part) || /\boff\b|closed/i.test(part)) continue;
+    /* [jours]? plages : "Mo-Fr 08:00-20:00" · "06:00-22:00" (tous les jours)
+       · "Mo,We,Fr 10:00-12:00" · "Mo-Su,PH 00:00-24:00"
+       · "Mo-Th 08:30-12:00,13:30-18:00" (double plage) */
+    const m = part.match(/^(?:((?:[A-Za-z]{2})(?:\s*[-,]\s*[A-Za-z]{2})*)\s+)?((?:\d{1,2}:\d{2}\s*-\s*\d{1,2}:\d{2})(?:\s*,\s*\d{1,2}:\d{2}\s*-\s*\d{1,2}:\d{2})*)$/);
+    if(!m) return null;           // syntaxe avancée (saisons, sunrise…) → texte brut affiché
+    /* jours → liste de couples [d1,d2] ; absents = toute la semaine ; PH ignoré */
+    const dayRanges = [];
+    if(m[1]){
+      for(const tok of m[1].split(",").map(s=>s.trim())){
+        if(tok.toUpperCase()==="PH") continue;
+        const r = tok.match(/^([A-Za-z]{2})(?:\s*-\s*([A-Za-z]{2}))?$/);
+        if(!r) return null;
+        const d1 = DAYS.indexOf(r[1]), d2 = r[2] ? DAYS.indexOf(r[2]) : d1;
+        if(d1<0||d2<0) return null;
+        dayRanges.push([d1,d2]);
+      }
+      if(!dayRanges.length) dayRanges.push([0,6]);
+    } else dayRanges.push([0,6]);
+    for(const t of m[2].split(",")){
+      const h = t.match(/(\d{1,2}):(\d{2})\s*-\s*(\d{1,2}):(\d{2})/);
+      let o = +h[1]*60+ +h[2], c = +h[3]*60+ +h[4];
+      if(c===0 || c===24*60) c = 24*60;               // "…-00:00" et "…-24:00" = minuit
+      for(const [d1,d2] of dayRanges){
+        if(o===0 && c===24*60) segs.push({d1,d2,o:0,c:24*60,all:d1===0&&d2===6});
+        else segs.push({d1,d2,o,c});
+      }
+    }
   }
   return segs.length?segs:null;
 }
@@ -213,7 +235,7 @@ function status(t){
   if(!t.segs) return "unknown";
   return isOpen(t.segs, new Date()) ? "open" : "closed";
 }
-const COLORS = {open:"#15803d", closed:"#dc2626", unknown:"#0369a1", hs:"#1f2937"};
+const COLORS = {open:"#15803d", closed:"#dc2626", unknown:"#8aa3b8", hs:"#1f2937"};
 const LABELS = {open:"OUVERT", closed:"FERMÉ", unknown:"HORAIRES INCONNUS", hs:"HORS SERVICE"};
 
 const filters = {open:false, pmr:false, baby:false, night:false, femmes:false, hs:false};
@@ -229,7 +251,7 @@ function visible(t){
 }
 const geojson = ()=>({ type:"FeatureCollection", features: DATA.filter(visible).map(t=>({
   type:"Feature", geometry:{type:"Point",coordinates:[t.lon,t.lat]},
-  properties:{ id:t.id, color:COLORS[status(t)] }}))});
+  properties:{ id:t.id, st:status(t), color:COLORS[status(t)] }}))});
 function updateStats(){
   const vis = DATA.filter(visible), nOpen = DATA.filter(t=>status(t)==="open").length;
   document.getElementById("stats").innerHTML =
@@ -317,9 +339,14 @@ let map, userPos=null, current=null;
         layout:{"text-field":"{point_count_abbreviated}","text-size":13,"text-font":font},
         paint:{"text-color":"#ffffff"}});
     }
+    /* hiérarchie visuelle : les statuts sûrs (vert/rouge) dominent,
+       les horaires non renseignés restent lisibles mais en retrait */
     map.addLayer({id:"pts",type:"circle",source:"wc",filter:["!",["has","point_count"]],
-      paint:{"circle-color":["get","color"],"circle-radius":8,
-        "circle-stroke-width":2.5,"circle-stroke-color":"#ffffff"}});
+      paint:{"circle-color":["get","color"],
+        "circle-radius":["match",["get","st"],"unknown",5.5,8],
+        "circle-opacity":["match",["get","st"],"unknown",0.85,1],
+        "circle-stroke-width":["match",["get","st"],"unknown",1.5,2.5],
+        "circle-stroke-color":"#ffffff"}});
 
     map.on("click","clusters",async e=>{
       const f=map.queryRenderedFeatures(e.point,{layers:["clusters"]})[0];

@@ -4,11 +4,12 @@
      node pipeline/sync.js --osm-file export.geojson --lyon-file lyon.geojson   # fichiers locaux (dev)
    Le fichier de sortie est trié par id : les diffs Git restent lisibles. */
 import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
-import { fromOsm, fromLyon } from "./normalize.js";
+import { fromOsm, fromLyon, fromParis } from "./normalize.js";
 import { dedupe } from "./dedupe.js";
 
 const OVERPASS = process.env.OVERPASS_URL ?? "https://overpass-api.de/api/interpreter";
 const LYON_URL = "https://www.data.gouv.fr/api/1/datasets/r/ac778842-76fd-48ac-8697-3eec0bfd9ce5";
+const PARIS_URL = "https://www.data.gouv.fr/api/1/datasets/r/4821bd30-9fcd-410e-8779-f7ddc1aab5f6";
 const OUT = new URL("../web/data/toilets.geojson", import.meta.url).pathname;
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -76,8 +77,25 @@ if (args["lyon-file"]) {
   console.log(`Lyon (data.gouv) : ${lyonFeatures.length} points`);
 }
 
+// ---- collecte Sanisettes Ville de Paris ----
+let parisFeatures = [];
+if (args["paris-file"]) {
+  parisFeatures = JSON.parse(readFileSync(args["paris-file"], "utf8")).features;
+  console.log(`Paris (fichier) : ${parisFeatures.length} points`);
+} else if (!args["osm-file"]) {   // en production uniquement (dev local : fichiers explicites)
+  try {
+    const res = await fetch(PARIS_URL, { headers: { "User-Agent": "Mappee/1.0" } });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    parisFeatures = (await res.json()).features.filter((f) => f.geometry?.type === "Point");
+    console.log(`Paris (data.gouv) : ${parisFeatures.length} points`);
+  } catch (e) {
+    console.log(`Paris indisponible (${e.message}) — sync sans l'enrichissement municipal parisien`);
+  }
+}
+
 // ---- normalisation, dédoublonnage, publication ----
-const rows = [...osmFeatures.map(fromOsm), ...lyonFeatures.map(fromLyon)];
+const rows = [...osmFeatures.map(fromOsm), ...lyonFeatures.map(fromLyon),
+              ...parisFeatures.map(fromParis)];
 const { kept, auto, review } = dedupe(rows);
 console.log(`dédoublonnage : ${auto} fusions auto, ${review.length} appariements 25-75 m sans similarité de nom :`);
 for (const r of review) console.log(`  À VÉRIFIER  ${r.name} (${r.muni}) → ${r.osm_name} (${r.osm}) à ${r.dist_m} m, sim=${r.sim}`);

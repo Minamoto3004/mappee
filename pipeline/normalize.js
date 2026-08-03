@@ -53,6 +53,41 @@ export function fromLyon(f) {
   };
 }
 
+/** Feature du GeoJSON Sanisettes Ville de Paris → propriétés pivot.
+    Champs observés (août 2026) : TYPE (Sanisette|WC|Urinoir), STATUT
+    (En service|Hors service), ADRESSE, HORAIRE ("06h00 - 22h00",
+    "24/24h", "Horaires du parc"), ACCES_PMR (bool), RELAIS_BEBE (bool).
+    Les noms peuvent être en MAJUSCULES (CSV) ou minuscules (GeoJSON). */
+export function fromParis(f, i) {
+  const raw = f.properties ?? {};
+  const p = {};
+  for (const k in raw) p[k.toLowerCase()] = raw[k];
+  const [lon, lat] = f.geometry.coordinates;
+  const horaire = (p.horaire ?? "").trim();
+  let hours = null;
+  const m = horaire.match(/^(\d{1,2})h(\d{2})?\s*-\s*(\d{1,2})h(\d{2})?$/);
+  if (m) hours = `Mo-Su ${m[1].padStart(2,"0")}:${m[2]??"00"}-${m[3].padStart(2,"0")}:${m[4]??"00"}`;
+  else if (/24.?\/.?24|24h\/24/.test(horaire)) hours = "24/7";
+  const type = (p.type ?? "").toLowerCase();
+  return {
+    id: `paris:${(+lon).toFixed(6)},${(+lat).toFixed(6)}`,   // pas d'uid stable dans la source
+    src: "paris",
+    lon: +lon, lat: +lat,
+    name: p.type ? `${p.type} — ${p.adresse ?? "Paris"}` : null,
+    address: p.adresse ? `${p.adresse}, ${p.arrondissement ?? ""} Paris`.trim() : null,
+    fee: false,                                   // réseau municipal gratuit depuis 2006
+    hours,
+    wheelchair: p.acces_pmr === true ? "yes" : p.acces_pmr === false ? "no" : null,
+    changing_table: p.relais_bebe === true ? true : p.relais_bebe === false ? false : null,
+    male_only: type === "urinoir",
+    supervised: null,
+    dry: null,
+    access: "yes",
+    oos: /hors service/i.test(p.statut ?? ""),
+    note: horaire === "Horaires du parc" ? "Suit les horaires du parc" : null,
+  };
+}
+
 /** openinghoursspecification (schema.org) → "Mo-Su 05:00-22:00" */
 export function compactHours(spec) {
   if (!spec) return null;
