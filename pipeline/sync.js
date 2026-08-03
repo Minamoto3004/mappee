@@ -16,8 +16,12 @@ const args = {};
 for (let i = 2; i < process.argv.length; i += 2) args[process.argv[i].replace(/^--/, "")] = process.argv[i + 1];
 
 async function overpassDept(dept, attempt = 0) {
+  /* ref:INSEE en préfixe (~"^69") et non en égalité stricte : la Métropole de
+     Lyon (69M) est une collectivité séparée du département du Rhône depuis
+     2015 — une égalité stricte exclurait Lyon et sa métropole. Idem pour
+     d'éventuels suffixes D/M sur d'autres territoires. */
   const query = `[out:json][timeout:120];
-    area["boundary"="administrative"]["admin_level"="6"]["ref:INSEE"="${dept}"]->.d;
+    area["boundary"="administrative"]["admin_level"="6"]["ref:INSEE"~"^${dept}"]->.d;
     nwr["amenity"="toilets"](area.d);
     out center tags;`;
   const res = await fetch(OVERPASS, {
