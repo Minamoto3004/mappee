@@ -74,6 +74,13 @@ header{position:absolute;top:0;left:0;right:0;z-index:20;
 .rbtn:active{background:var(--brand-light)}
 .rbtn:disabled{opacity:.45;cursor:default}
 .crowd .thanks{font-size:.82rem;color:var(--open);font-weight:600;padding:6px 0}
+.fab{position:absolute;left:50%;transform:translateX(-50%);
+  bottom:calc(env(safe-area-inset-bottom) + 22px);z-index:25;
+  background:var(--brand);color:#fff;border:none;border-radius:999px;
+  padding:13px 22px;font-size:.95rem;font-weight:700;cursor:pointer;
+  box-shadow:0 6px 24px rgba(14,116,144,.45);-webkit-tap-highlight-color:transparent}
+.fab:active{transform:translateX(-50%) scale(.97)}
+.fab:disabled{opacity:.7}
 .notice{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);z-index:5;
   background:rgba(255,255,255,.9);border-radius:12px;padding:10px 16px;font-size:.8rem;
   color:var(--ink-soft);box-shadow:var(--shadow);display:none;text-align:center;max-width:280px}
@@ -106,6 +113,8 @@ header{position:absolute;top:0;left:0;right:0;z-index:20;
 </div>
 
 <div class="notice" id="notice"></div>
+
+<button class="fab" id="fab-near">🚽 La plus proche</button>
 
 <div class="sheet" id="sheet">
   <div class="grab"></div>
@@ -406,6 +415,36 @@ function openSheet(t){
   document.getElementById("sheet").classList.add("open");
 }
 function closeSheet(){ document.getElementById("sheet").classList.remove("open"); current=null; }
+
+/* ---------- « Emmenez-moi aux toilettes les plus proches » ---------- */
+const fab = document.getElementById("fab-near");
+fab.addEventListener("click", async ()=>{
+  fab.disabled = true;
+  const oldLabel = fab.textContent;
+  fab.textContent = "Localisation…";
+  try{
+    const pos = await new Promise((res, rej)=>
+      navigator.geolocation.getCurrentPosition(res, rej,
+        {enableHighAccuracy:true, timeout:10000, maximumAge:30000}));
+    userPos = [pos.coords.longitude, pos.coords.latitude];
+    /* candidates : respectent les filtres actifs ; jamais fermé ni hors service.
+       Priorité aux ouvertes ; à défaut, horaires inconnus (mieux que rien). */
+    const cands = DATA.filter(visible)
+      .map(t=>({t, st:status(t), d:haversine(userPos,[t.lon,t.lat])}))
+      .filter(c=>c.st==="open"||c.st==="unknown")
+      .sort((a,b)=>a.d-b.d);
+    const pick = cands.find(c=>c.st==="open") ?? cands[0];
+    if(!pick){ notice("Aucune toilette disponible avec les filtres actuels — essaie d'en désactiver."); return; }
+    if(pick.st==="unknown") notice("Aucune ouverte à coup sûr à proximité — voici la plus proche (horaires inconnus).");
+    map.flyTo({center:[pick.t.lon, pick.t.lat], zoom:16.5, speed:1.8});
+    openSheet(pick.t);
+  }catch(e){
+    notice("Impossible de te localiser — autorise la géolocalisation dans ton navigateur.");
+  }finally{
+    fab.disabled = false;
+    fab.textContent = oldLabel;
+  }
+});
 </script>
 </body>
 </html>
