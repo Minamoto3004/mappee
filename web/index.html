@@ -5,6 +5,10 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>Mappee — Toilettes publiques</title>
 <meta name="description" content="Mappee — carte des toilettes publiques. Données OpenStreetMap (ODbL) et Ville de Lyon (Licence Ouverte).">
+<meta name="theme-color" content="#0e7490">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icons/icon-192.png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="stylesheet" href="vendor/maplibre-gl.css">
 <style>
 :root{
@@ -146,6 +150,10 @@ header{position:absolute;top:0;left:0;right:0;z-index:20;
 <script src="vendor/maplibre-gl.js"></script>
 <script>
 "use strict";
+/* PWA : coquille et données disponibles hors ligne */
+if ("serviceWorker" in navigator) {
+  window.addEventListener("load", () => navigator.serviceWorker.register("./sw.js").catch(() => {}));
+}
 /* Renseigner après déploiement du Worker Cloudflare (worker/) —
    vide : la section signalements reste masquée, la carte fonctionne. */
 const WORKER_URL = "https://mappee-api.cowo.workers.dev";
