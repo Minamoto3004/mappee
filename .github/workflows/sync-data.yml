@@ -11,6 +11,7 @@ on:
 
 permissions:
   contents: write
+  actions: write   # pour déclencher le déploiement Pages après le commit du bot
 
 jobs:
   sync:
@@ -24,6 +25,7 @@ jobs:
         # Nantes, Montpellier, Strasbourg, Bordeaux, Lille (départements entiers)
         run: node pipeline/sync.js --depts "${{ github.event.inputs.depts || '69,75,13,31,06,44,34,67,33,59' }}"
       - name: Committer si changement
+        id: commit
         run: |
           git config user.name "mappee-bot"
           git config user.email "actions@users.noreply.github.com"
@@ -31,6 +33,15 @@ jobs:
             git add web/data/toilets.geojson
             git commit -m "data: synchronisation $(date -u +%F)"
             git push
+            echo "pushed=true" >> "$GITHUB_OUTPUT"
           else
             echo "Aucun changement de données."
+            echo "pushed=false" >> "$GITHUB_OUTPUT"
           fi
+      - name: Déclencher le déploiement Pages
+        # les pushes du bot ne déclenchent pas les autres workflows (règle
+        # anti-boucle de GitHub) — on commande donc le déploiement explicitement
+        if: steps.commit.outputs.pushed == 'true'
+        run: gh workflow run deploy-pages.yml --ref main
+        env:
+          GH_TOKEN: ${{ github.token }}
