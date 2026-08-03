@@ -127,6 +127,8 @@ for (const s of MUNICIPAL_SOURCES) {
       const body = await res.json();
       features = (body.features ?? []).filter((f) => f.geometry);
       console.log(`${s.label} : ${features.length} points`);
+      if (features.length)   // découverte : clés+valeurs réelles visibles dans le log
+        console.log(`  [schéma ${s.key}] ${JSON.stringify(features[0].properties).slice(0, 300)}`);
     } catch (e) {
       console.log(`${s.label} INDISPONIBLE (${e.message}) — run poursuivi sans cette source`);
       continue;

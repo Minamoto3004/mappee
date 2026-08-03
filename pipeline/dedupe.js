@@ -60,6 +60,12 @@ export function dedupe(rows) {
     o.hours ??= m.hours;
     o.supervised ??= m.supervised;
     o.dry ??= m.dry;
+    o.wheelchair ??= m.wheelchair;          // PMR municipal quand OSM est muet
+    o.changing_table ??= m.changing_table;  // tables à langer (Paris, Nantes)
+    o.fee ??= m.fee;
+    o.indoor ??= m.indoor;
+    o.note ??= m.note;
+    o.male_only = o.male_only || m.male_only;
     o.oos = o.oos || m.oos;
     o.merged_from = [...(o.merged_from ?? []), m.id];
     m._merged = true;
