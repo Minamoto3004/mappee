@@ -122,8 +122,18 @@ for (const s of MUNICIPAL_SOURCES) {
     console.log(`${s.label} (fichier) : ${features.length} points`);
   } else if (!args["osm-file"]) {   // en production uniquement (dev local : fichiers explicites)
     try {
-      const res = await fetch(s.url, { headers: { "User-Agent": "Mappee/1.0" } });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      let res;
+      for (let attempt = 0; ; attempt++) {   // 3 tentatives : amortit les hoquets transitoires
+        try {
+          res = await fetch(s.url, { headers: { "User-Agent": "Mappee/1.0" } });
+          if (res.ok) break;
+          throw new Error(`HTTP ${res.status}`);
+        } catch (e) {
+          if (attempt >= 2) throw e;
+          console.log(`  ${s.key} : ${e.message} → nouvelle tentative dans 10s`);
+          await sleep(10000);
+        }
+      }
       const body = await res.json();
       features = (body.features ?? []).filter((f) => f.geometry);
       console.log(`${s.label} : ${features.length} points`);

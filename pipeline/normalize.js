@@ -77,8 +77,9 @@ export function fromParis(f, i) {
     address: p.adresse ? `${p.adresse}, ${p.arrondissement ?? ""} Paris`.trim() : null,
     fee: false,                                   // réseau municipal gratuit depuis 2006
     hours,
-    wheelchair: p.acces_pmr === true ? "yes" : p.acces_pmr === false ? "no" : null,
-    changing_table: p.relais_bebe === true ? true : p.relais_bebe === false ? false : null,
+    /* l'export GeoJSON livre "Oui"/"Non" (chaînes), le CSV true/false : looseBool gère les deux */
+    wheelchair: looseBool(p.acces_pmr) === true ? "yes" : looseBool(p.acces_pmr) === false ? "no" : null,
+    changing_table: looseBool(p.relais_bebe),
     male_only: type === "urinoir",
     supervised: null,
     dry: null,
@@ -155,13 +156,15 @@ export function fromMarseille(f) {
 export function fromToulouse(f) {
   const p = propLookup(f.properties ?? {});
   const c = pointOf(f); if (!c) return null;
-  const acc = p("accessibilité", "accessibilite");
-  const type = p("type") ?? "Sanitaire";
+  /* export GeoJSON : champs `pmr` et `route` ; CSV : `accessibilité` et `ADRESSE` */
+  const acc = p("pmr", "accessibilité", "accessibilite");
+  const type = p("type") && p("type") !== "Inconnu" ? p("type") : "Sanitaire";
+  const addr = p("route", "ADRESSE");
   return {
     id: "toulouse:" + (p("numero") ?? `${c[0].toFixed(6)},${c[1].toFixed(6)}`),
     src: "toulouse", lon: +c[0], lat: +c[1],
-    name: p("ADRESSE") ? `${type} — ${p("ADRESSE")}` : type,
-    address: p("ADRESSE") ? `${p("ADRESSE")}, Toulouse` : null,
+    name: addr ? `${type} — ${addr}` : type,
+    address: addr ? `${addr}, Toulouse` : null,
     fee: null, hours: null,
     wheelchair: acc ? (/^non/i.test(acc) ? "no" : "yes") : null,
     changing_table: null,
@@ -175,20 +178,23 @@ export function fromToulouse(f) {
 export function fromNantes(f) {
   const p = propLookup(f.properties ?? {});
   const c = pointOf(f); if (!c) return null;
-  const horaire = p("Horaires d'ouverture", "horaires_d_ouverture", "horaires");
-  const jours = p("Jours d'ouverture", "jours_d_ouverture", "jours");
-  const etat = p("Etat du mobilier", "etat_du_mobilier", "etat") ?? "";
-  const pmr = p("Accessibilité PMR", "accessibilite_pmr");
-  const table = p("Equipement Tables à langer", "equipement_tables_a_langer");
+  /* export GeoJSON (schéma révélé au run de découverte) : horaire_ouverture,
+     jour_ouverture, equipement_table_langer — au singulier — et valeurs
+     "oui"/"non" en chaînes. Les libellés CSV restent en secours. */
+  const horaire = p("horaire_ouverture", "Horaires d'ouverture", "horaires_d_ouverture");
+  const jours = p("jour_ouverture", "Jours d'ouverture", "jours_d_ouverture");
+  const etat = p("etat_mobilier", "Etat du mobilier", "etat_du_mobilier", "etat") ?? "";
+  const pmr = looseBool(p("accessibilite_pmr", "Accessibilité PMR"));
+  const table = looseBool(p("equipement_table_langer", "Equipement Tables à langer", "equipement_tables_a_langer"));
   const hours = frHours(horaire, jours);
   return {
-    id: "nantes:" + (p("Identifiant", "identifiant") ?? `${c[0].toFixed(6)},${c[1].toFixed(6)}`),
+    id: "nantes:" + (p("Identifiant", "identifiant", "id_toilette") ?? `${c[0].toFixed(6)},${c[1].toFixed(6)}`),
     src: "nantes", lon: +c[0], lat: +c[1],
     name: p("Nom", "nom") ? `Toilettes — ${p("Nom", "nom")}` : "Toilettes publiques",
     address: p("Commune", "commune") ? `${p("Nom","nom") ?? ""}, ${p("Commune","commune")}`.replace(/^, /,"") : null,
     fee: null, hours,
-    wheelchair: pmr === true || pmr === "true" ? "yes" : pmr === false || pmr === "false" ? "no" : null,
-    changing_table: table === true || table === "true" ? true : table === false || table === "false" ? false : null,
+    wheelchair: pmr === true ? "yes" : pmr === false ? "no" : null,
+    changing_table: table,
     male_only: false, supervised: null, dry: null, access: "yes",
     oos: /hors service|temporairement ferm/i.test(etat),
     note: !hours && horaire ? `Horaires : ${horaire}${jours ? " (" + jours + ")" : ""}` : null,
