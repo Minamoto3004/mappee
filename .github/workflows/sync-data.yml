@@ -1,0 +1,34 @@
+name: Synchronisation des données
+
+on:
+  schedule:
+    - cron: "0 4 * * 1"        # lundi 4h UTC — OSM + Lyon
+  workflow_dispatch:
+    inputs:
+      depts:
+        description: "Départements INSEE (ex. 69,38)"
+        default: "69"
+
+permissions:
+  contents: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - name: Synchroniser
+        run: node pipeline/sync.js --depts "${{ github.event.inputs.depts || '69' }}"
+      - name: Committer si changement
+        run: |
+          git config user.name "mappee-bot"
+          git config user.email "actions@users.noreply.github.com"
+          if ! git diff --quiet web/data/toilets.geojson; then
+            git add web/data/toilets.geojson
+            git commit -m "data: synchronisation $(date -u +%F)"
+            git push
+          else
+            echo "Aucun changement de données."
+          fi

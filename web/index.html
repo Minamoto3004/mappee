@@ -1,0 +1,411 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Mappee — Toilettes publiques</title>
+<meta name="description" content="Mappee — carte des toilettes publiques. Données OpenStreetMap (ODbL) et Ville de Lyon (Licence Ouverte).">
+<link rel="stylesheet" href="vendor/maplibre-gl.css">
+<style>
+:root{
+  --brand:#0e7490; --brand-dark:#155e75; --brand-light:#ecfeff;
+  --open:#15803d; --closed:#64748b; --unknown:#0369a1; --hs:#dc2626;
+  --ink:#0f172a; --ink-soft:#475569; --line:#e2e8f0; --bg:#ffffff;
+  --radius:14px; --shadow:0 4px 20px rgba(15,23,42,.14);
+  font-size:16px;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%;overflow:hidden}
+body{font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;color:var(--ink)}
+#map{position:absolute;inset:0}
+header{position:absolute;top:0;left:0;right:0;z-index:20;
+  padding:calc(env(safe-area-inset-top) + 10px) 12px 0;pointer-events:none}
+.hdr-card{pointer-events:auto;background:var(--bg);border-radius:var(--radius);
+  box-shadow:var(--shadow);padding:10px 14px;max-width:560px;margin:0 auto}
+.hdr-top{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}
+.brand{font-weight:800;font-size:1.25rem;letter-spacing:-.02em;color:var(--brand)}
+.brand small{font-weight:600;color:var(--ink-soft);font-size:.72rem;letter-spacing:.04em;vertical-align:2px}
+.stats{font-size:.82rem;color:var(--ink-soft)}
+.stats b{color:var(--open)}
+.chips{display:flex;gap:6px;margin-top:9px;overflow-x:auto;scrollbar-width:none;padding-bottom:2px}
+.chips::-webkit-scrollbar{display:none}
+.chip{flex:0 0 auto;border:1.5px solid var(--line);background:var(--bg);color:var(--ink-soft);
+  border-radius:999px;padding:5px 12px;font-size:.8rem;font-weight:600;cursor:pointer;
+  transition:all .15s;user-select:none;-webkit-tap-highlight-color:transparent}
+.chip.on{background:var(--brand);border-color:var(--brand);color:#fff}
+.chip.warn.on{background:var(--hs);border-color:var(--hs)}
+.legend{position:absolute;left:10px;bottom:calc(env(safe-area-inset-bottom) + 46px);z-index:15;
+  background:rgba(255,255,255,.93);border-radius:10px;box-shadow:var(--shadow);
+  padding:8px 11px;font-size:.72rem;color:var(--ink-soft);line-height:1.75}
+.dot{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:6px;vertical-align:-1px}
+.sheet{position:absolute;left:0;right:0;bottom:0;z-index:30;
+  background:var(--bg);border-radius:18px 18px 0 0;box-shadow:0 -6px 30px rgba(15,23,42,.25);
+  padding:8px 18px calc(env(safe-area-inset-bottom) + 16px);max-width:600px;margin:0 auto;
+  transform:translateY(105%);transition:transform .25s ease;max-height:70vh;overflow-y:auto}
+.sheet.open{transform:translateY(0)}
+.grab{width:38px;height:4px;border-radius:2px;background:var(--line);margin:4px auto 10px}
+.sheet h2{font-size:1.15rem;letter-spacing:-.01em;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.st-pill{font-size:.7rem;font-weight:700;padding:3px 9px;border-radius:999px;color:#fff;letter-spacing:.03em}
+.sheet .addr{color:var(--ink-soft);font-size:.88rem;margin-top:3px}
+.badges{display:flex;gap:6px;flex-wrap:wrap;margin-top:10px}
+.badge{font-size:.73rem;font-weight:600;background:var(--brand-light);color:var(--brand-dark);
+  border-radius:7px;padding:4px 9px}
+.badge.neg{background:#fef2f2;color:var(--hs)}
+.hours{margin-top:12px;font-size:.86rem}
+.hours .row{display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px dashed var(--line)}
+.hours .row span:last-child{font-variant-numeric:tabular-nums;color:var(--ink-soft)}
+.hours .raw{color:var(--ink-soft);font-family:ui-monospace,monospace;font-size:.78rem}
+.note{margin-top:10px;font-size:.8rem;color:var(--ink-soft);font-style:italic}
+.actions{display:flex;gap:10px;margin-top:15px}
+.btn{flex:1;text-align:center;text-decoration:none;border:none;cursor:pointer;
+  border-radius:11px;padding:12px 10px;font-size:.9rem;font-weight:700}
+.btn-go{background:var(--brand);color:#fff}
+.btn-close2{background:#f1f5f9;color:var(--ink-soft)}
+.dist{font-size:.8rem;color:var(--brand-dark);font-weight:600;margin-top:6px}
+/* --- état communautaire + signalement --- */
+.crowd{margin-top:14px;border-top:1px solid var(--line);padding-top:12px}
+.crowd-state{font-size:.85rem;margin-bottom:9px}
+.crowd-state b{font-weight:700}
+.crowd-state .when{color:var(--ink-soft);font-size:.78rem}
+.crowd h3{font-size:.85rem;color:var(--ink-soft);font-weight:600;margin-bottom:8px}
+.report-btns{display:flex;gap:7px;flex-wrap:wrap}
+.rbtn{flex:1;min-width:70px;border:1.5px solid var(--line);background:var(--bg);border-radius:10px;
+  padding:9px 4px;font-size:.78rem;font-weight:600;color:var(--ink);cursor:pointer;text-align:center}
+.rbtn span{display:block;font-size:1.15rem;margin-bottom:2px}
+.rbtn:active{background:var(--brand-light)}
+.rbtn:disabled{opacity:.45;cursor:default}
+.crowd .thanks{font-size:.82rem;color:var(--open);font-weight:600;padding:6px 0}
+.notice{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);z-index:5;
+  background:rgba(255,255,255,.9);border-radius:12px;padding:10px 16px;font-size:.8rem;
+  color:var(--ink-soft);box-shadow:var(--shadow);display:none;text-align:center;max-width:280px}
+.maplibregl-ctrl-bottom-right{bottom:14px}
+</style>
+</head>
+<body>
+<div id="map"></div>
+
+<header><div class="hdr-card">
+  <div class="hdr-top">
+    <div class="brand">Mappee <small id="city">LYON</small></div>
+    <div class="stats" id="stats">chargement…</div>
+  </div>
+  <div class="chips" id="chips">
+    <button class="chip" data-f="open">Ouvert maintenant</button>
+    <button class="chip" data-f="pmr">Accès PMR</button>
+    <button class="chip" data-f="baby">Table à langer</button>
+    <button class="chip" data-f="night">Ouvert la nuit</button>
+    <button class="chip" data-f="nourinoir">Sans urinoirs&nbsp;H</button>
+    <button class="chip warn" data-f="hs">Afficher hors service</button>
+  </div>
+</div></header>
+
+<div class="legend">
+  <span class="dot" style="background:var(--open)"></span>Ouvert<br>
+  <span class="dot" style="background:var(--closed)"></span>Fermé<br>
+  <span class="dot" style="background:var(--unknown)"></span>Horaires inconnus
+</div>
+
+<div class="notice" id="notice"></div>
+
+<div class="sheet" id="sheet">
+  <div class="grab"></div>
+  <h2><span id="s-nom"></span><span class="st-pill" id="s-pill"></span></h2>
+  <div class="addr" id="s-addr"></div>
+  <div class="dist" id="s-dist" style="display:none"></div>
+  <div class="badges" id="s-badges"></div>
+  <div class="hours" id="s-hours"></div>
+  <div class="note" id="s-note" style="display:none"></div>
+  <div class="crowd" id="crowd" style="display:none">
+    <div class="crowd-state" id="crowd-state"></div>
+    <div id="report-zone">
+      <h3>C'était comment ?</h3>
+      <div class="report-btns">
+        <button class="rbtn" data-s="clean"><span>👍</span>Propre</button>
+        <button class="rbtn" data-s="ok"><span>😐</span>Passable</button>
+        <button class="rbtn" data-s="dirty"><span>👎</span>À éviter</button>
+        <button class="rbtn" data-s="out_of_service"><span>🚫</span>Hors service</button>
+      </div>
+    </div>
+    <div class="thanks" id="thanks" style="display:none">Merci pour le signalement !</div>
+  </div>
+  <div class="actions">
+    <a class="btn btn-go" id="s-go" target="_blank" rel="noopener">🧭 Y aller</a>
+    <button class="btn btn-close2" onclick="closeSheet()">Fermer</button>
+  </div>
+</div>
+
+<script src="vendor/maplibre-gl.js"></script>
+<script>
+"use strict";
+/* Renseigner après déploiement du Worker Cloudflare (worker/) —
+   vide : la section signalements reste masquée, la carte fonctionne. */
+const WORKER_URL = "";
+
+const DATA_URL = "data/toilets.geojson";
+let DATA = [], STATES = {};
+
+/* ---------- identifiant device anonyme (anti-spam, jamais identifiant) ---------- */
+function deviceId(){
+  let d = localStorage.getItem("mappee-device");
+  if(!d){ d = crypto.randomUUID(); localStorage.setItem("mappee-device", d); }
+  return d;
+}
+
+/* ---------- horaires : "Mo-Su 05:00-22:00;We 05:00-13:00", "24/7", sous-ensemble OSM ---------- */
+const DAYS = ["Mo","Tu","We","Th","Fr","Sa","Su"];
+const DAYS_FR = ["Lun","Mar","Mer","Jeu","Ven","Sam","Dim"];
+function parseHours(str){
+  if(!str) return null;
+  if(str.trim() === "24/7") return [{d1:0,d2:6,o:0,c:24*60,all:true}];
+  const segs = [];
+  for(const raw of str.split(";")){
+    const part = raw.trim();
+    if(!part || /^(PH|SH)\b/i.test(part) || /\boff\b/i.test(part)) continue;
+    const m = part.match(/^([A-Za-z]{2})(?:-([A-Za-z]{2}))?\s+(\d{1,2}):(\d{2})-(\d{1,2}):(\d{2})$/);
+    if(!m) return null;           // syntaxe OSM avancée non gérée → statut inconnu, texte brut affiché
+    const d1 = DAYS.indexOf(m[1]), d2 = m[2] ? DAYS.indexOf(m[2]) : d1;
+    if(d1<0||d2<0) return null;
+    segs.push({d1,d2,o:+m[3]*60+ +m[4],c:+m[5]*60+ +m[6]});
+  }
+  return segs.length?segs:null;
+}
+function dayMatch(seg,d){ return seg.d1<=seg.d2 ? (d>=seg.d1&&d<=seg.d2) : (d>=seg.d1||d<=seg.d2); }
+function isOpen(segs,now){
+  const d=(now.getDay()+6)%7, t=now.getHours()*60+now.getMinutes();
+  for(const s of segs){
+    if(s.all) return true;
+    if(s.c>s.o){ if(dayMatch(s,d)&&t>=s.o&&t<s.c) return true; }
+    else { if(dayMatch(s,d)&&t>=s.o) return true;
+           if(dayMatch(s,(d+6)%7)&&t<s.c) return true; }
+  }
+  return false;
+}
+const fmtH = (min)=>{ const h=Math.floor(min/60),m=min%60; return m? `${h}h${String(m).padStart(2,"0")}` : `${h}h`; };
+function humanHours(segs){
+  return segs.map(s=>{
+    if(s.all) return {days:"Tous les jours", time:"24h/24"};
+    const days = (s.d1===0&&s.d2===6)?"Tous les jours":(s.d1===s.d2?DAYS_FR[s.d1]:`${DAYS_FR[s.d1]} – ${DAYS_FR[s.d2]}`);
+    return {days, time:`${fmtH(s.o)} – ${fmtH(s.c)}${s.c<=s.o?" (+1)":""}`};
+  });
+}
+const isNight = (segs)=> !!segs && segs.some(s=>s.all || s.c<=s.o || s.c>=23*60+59);
+
+/* ---------- statut ---------- */
+function status(t){
+  if(t.oos || (STATES[t.id]?.oos)) return "hs";
+  if(!t.segs) return "unknown";
+  return isOpen(t.segs, new Date()) ? "open" : "closed";
+}
+const COLORS = {open:"#15803d", closed:"#64748b", unknown:"#0369a1", hs:"#dc2626"};
+const LABELS = {open:"OUVERT", closed:"FERMÉ", unknown:"HORAIRES INCONNUS", hs:"HORS SERVICE"};
+
+const filters = {open:false, pmr:false, baby:false, night:false, nourinoir:false, hs:false};
+function visible(t){
+  const st = status(t);
+  if(st==="hs" && !filters.hs) return false;
+  if(filters.open && st!=="open") return false;
+  if(filters.pmr && !(t.wheelchair==="yes"||t.wheelchair==="limited")) return false;
+  if(filters.baby && t.changing_table!==true) return false;
+  if(filters.night && !isNight(t.segs)) return false;
+  if(filters.nourinoir && t.male_only) return false;
+  return true;
+}
+const geojson = ()=>({ type:"FeatureCollection", features: DATA.filter(visible).map(t=>({
+  type:"Feature", geometry:{type:"Point",coordinates:[t.lon,t.lat]},
+  properties:{ id:t.id, color:COLORS[status(t)] }}))});
+function updateStats(){
+  const vis = DATA.filter(visible), nOpen = DATA.filter(t=>status(t)==="open").length;
+  document.getElementById("stats").innerHTML =
+    `${vis.length} affichée${vis.length>1?"s":""} · <b>${nOpen} ouvertes</b> actuellement`;
+}
+function notice(msg, ms=6000){
+  const el=document.getElementById("notice");
+  el.textContent=msg; el.style.display="block";
+  if(ms) setTimeout(()=>el.style.display="none", ms);
+}
+
+/* ---------- carte ---------- */
+const IGN_STYLE = "https://data.geopf.fr/annexes/ressources/vectorTiles/styles/PLAN.IGN/standard.json";
+const FALLBACK = { version:8, sources:{}, layers:[{id:"bg",type:"background",paint:{"background-color":"#e8ecef"}}] };
+const ATTRIB = '© <a href="https://www.openstreetmap.org/copyright">les contributeurs OpenStreetMap</a> (ODbL) · © <a href="https://www.data.gouv.fr/datasets/toilettes-publiques-de-la-commune-de-lyon">Ville de Lyon</a> (LO 2.0) · Fond © <a href="https://www.ign.fr/">IGN</a>';
+
+async function getStyle(){
+  try{
+    const ctl = new AbortController(); setTimeout(()=>ctl.abort(),5000);
+    const r = await fetch(IGN_STYLE,{signal:ctl.signal});
+    if(!r.ok) throw 0;
+    return await r.json();
+  }catch(e){
+    notice("Fond de carte indisponible — les points restent utilisables.");
+    return FALLBACK;
+  }
+}
+async function loadData(){
+  const r = await fetch(DATA_URL);
+  if(!r.ok) throw new Error("données indisponibles");
+  const gj = await r.json();
+  DATA = gj.features.map(f=>({ ...f.properties,
+    lon:f.geometry.coordinates[0], lat:f.geometry.coordinates[1],
+    segs: parseHours(f.properties.hours) }));
+  /* fiches partageant la même position → léger décalage pour rester cliquables */
+  const byCoord = {};
+  for(const t of DATA){ const k=t.lon.toFixed(6)+","+t.lat.toFixed(6); (byCoord[k]=byCoord[k]||[]).push(t); }
+  for(const k in byCoord){ const g=byCoord[k];
+    if(g.length>1) g.forEach((t,i)=>{ if(i>0){ const a=i*2.1; t.lon+=0.00016*Math.cos(a); t.lat+=0.00012*Math.sin(a);} });
+  }
+}
+async function loadStates(){
+  if(!WORKER_URL) return;
+  try{ const r = await fetch(WORKER_URL+"/api/state"); if(r.ok) STATES = await r.json(); }
+  catch(e){ /* hors ligne : la carte vit sans les états */ }
+}
+
+let map, userPos=null, current=null;
+(async ()=>{
+  const [style] = await Promise.all([getStyle(), loadData(), loadStates()]);
+  map = new maplibregl.Map({ container:"map", style,
+    center:[4.8357,45.7590], zoom:12.4, attributionControl:false });
+  map.addControl(new maplibregl.AttributionControl({compact:true, customAttribution:ATTRIB}));
+  map.addControl(new maplibregl.NavigationControl({showCompass:false}), "bottom-right");
+  const geo = new maplibregl.GeolocateControl({positionOptions:{enableHighAccuracy:true},trackUserLocation:true});
+  map.addControl(geo,"bottom-right");
+  geo.on("geolocate",e=>{ userPos=[e.coords.longitude,e.coords.latitude]; if(current) showDist(current); });
+
+  map.on("load",()=>{
+    map.addSource("wc",{type:"geojson",data:geojson(),cluster:true,clusterMaxZoom:14,clusterRadius:46});
+    map.addLayer({id:"clusters",type:"circle",source:"wc",filter:["has","point_count"],
+      paint:{"circle-color":"#0e7490","circle-opacity":.88,
+        "circle-radius":["step",["get","point_count"],16,10,20,25,26],
+        "circle-stroke-width":3,"circle-stroke-color":"rgba(14,116,144,.25)"}});
+    let font=null;
+    if(style!==FALLBACK && style.glyphs){
+      for(const l of (style.layers||[])){
+        const f=l.layout && l.layout["text-font"];
+        if(f){ font=Array.isArray(f)?f:[f]; break; }
+      }
+    }
+    if(font){
+      map.addLayer({id:"cluster-count",type:"symbol",source:"wc",filter:["has","point_count"],
+        layout:{"text-field":"{point_count_abbreviated}","text-size":13,"text-font":font},
+        paint:{"text-color":"#ffffff"}});
+    }
+    map.addLayer({id:"pts",type:"circle",source:"wc",filter:["!",["has","point_count"]],
+      paint:{"circle-color":["get","color"],"circle-radius":8,
+        "circle-stroke-width":2.5,"circle-stroke-color":"#ffffff"}});
+
+    map.on("click","clusters",async e=>{
+      const f=map.queryRenderedFeatures(e.point,{layers:["clusters"]})[0];
+      const z=await map.getSource("wc").getClusterExpansionZoom(f.properties.cluster_id);
+      map.easeTo({center:f.geometry.coordinates,zoom:z+0.3});
+    });
+    map.on("click","pts",e=>{
+      const t=DATA.find(x=>x.id===e.features[0].properties.id);
+      if(t) openSheet(t);
+    });
+    for(const l of ["clusters","pts"]){
+      map.on("mouseenter",l,()=>map.getCanvas().style.cursor="pointer");
+      map.on("mouseleave",l,()=>map.getCanvas().style.cursor="");
+    }
+    updateStats();
+  });
+})().catch(e=>notice("Erreur de chargement : "+e.message, 0));
+
+document.getElementById("chips").addEventListener("click",e=>{
+  const c=e.target.closest(".chip"); if(!c) return;
+  filters[c.dataset.f]=!filters[c.dataset.f]; c.classList.toggle("on",filters[c.dataset.f]);
+  map.getSource("wc").setData(geojson()); updateStats();
+});
+setInterval(()=>{ if(map&&map.getSource("wc")){ map.getSource("wc").setData(geojson()); updateStats(); } },60000);
+
+/* ---------- fiche ---------- */
+function haversine(a,b){
+  const R=6371000,rad=x=>x*Math.PI/180;
+  const h=Math.sin(rad(b[1]-a[1])/2)**2+Math.cos(rad(a[1]))*Math.cos(rad(b[1]))*Math.sin(rad(b[0]-a[0])/2)**2;
+  return 2*R*Math.asin(Math.sqrt(h));
+}
+function showDist(t){
+  const el=document.getElementById("s-dist");
+  if(!userPos){el.style.display="none";return;}
+  const d=haversine(userPos,[t.lon,t.lat]);
+  el.textContent = d<1000 ? `À ${Math.round(d)} m à vol d'oiseau` : `À ${(d/1000).toFixed(1)} km à vol d'oiseau`;
+  el.style.display="block";
+}
+function crowdLabel(s){
+  if(s.oos) return ["Signalé hors service récemment", "var(--hs)"];
+  if(s.score==null) return null;
+  if(s.score>=0.7) return ["Plutôt propre", "var(--open)"];
+  if(s.score>=0.4) return ["Correct", "var(--unknown)"];
+  return ["À éviter en ce moment", "var(--hs)"];
+}
+const ago = (iso)=>{
+  const d=(Date.now()-new Date(iso).getTime())/864e5;
+  return d<1 ? "aujourd'hui" : d<2 ? "hier" : `il y a ${Math.round(d)} j`;
+};
+function renderCrowd(t){
+  if(!WORKER_URL){ document.getElementById("crowd").style.display="none"; return; }
+  document.getElementById("crowd").style.display="block";
+  const s = STATES[t.id];
+  const el = document.getElementById("crowd-state");
+  if(s && (s.score!=null || s.oos)){
+    const [label,color] = crowdLabel(s);
+    el.innerHTML = `<b style="color:${color}">${label}</b> <span class="when">· ${s.n} avis · dernier ${ago(s.last)}</span>`;
+  } else el.innerHTML = `<span class="when">Aucun avis récent — soyez le premier !</span>`;
+  document.getElementById("thanks").style.display="none";
+  document.getElementById("report-zone").style.display="block";
+}
+document.querySelectorAll(".rbtn").forEach(b=>b.addEventListener("click",async ()=>{
+  if(!current || !WORKER_URL) return;
+  b.disabled = true;
+  try{
+    const r = await fetch(WORKER_URL+"/api/report",{ method:"POST",
+      headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({toilet_id:current.id, state:b.dataset.s, device:deviceId()})});
+    if(r.status===429){ notice("Signalement déjà enregistré récemment — merci !"); }
+    else if(!r.ok) throw 0;
+    document.getElementById("report-zone").style.display="none";
+    document.getElementById("thanks").style.display="block";
+    loadStates();
+  }catch(e){ notice("Signalement impossible pour le moment."); b.disabled=false; }
+}));
+
+function openSheet(t){
+  current=t;
+  const st=status(t);
+  document.getElementById("s-nom").textContent = t.name ?? "Toilettes publiques";
+  const pill=document.getElementById("s-pill");
+  pill.textContent=LABELS[st]; pill.style.background=COLORS[st];
+  document.getElementById("s-addr").textContent = t.address ?? "";
+  showDist(t);
+  const badges=[];
+  if(t.wheelchair==="yes") badges.push(["♿ Accès PMR",0]);
+  if(t.wheelchair==="limited") badges.push(["♿ PMR partiel",0]);
+  if(t.wheelchair==="no") badges.push(["♿ Non accessible PMR",1]);
+  if(t.changing_table===true) badges.push(["🍼 Table à langer",0]);
+  if(t.fee===false) badges.push(["Gratuit",0]);
+  if(t.fee===true) badges.push(["Payant",1]);
+  if(t.supervised===true) badges.push(["Sanitaire surveillé",0]);
+  if(t.dry===true) badges.push(["Toilette sèche",0]);
+  if(t.male_only) badges.push(["Urinoir — hommes uniquement",1]);
+  if(isNight(t.segs)) badges.push(["Ouvert la nuit",0]);
+  if(t.oos) badges.push(["Condamné / en travaux",1]);
+  document.getElementById("s-badges").innerHTML =
+    badges.map(([b,neg])=>`<span class="badge${neg?" neg":""}">${b}</span>`).join("");
+  const hv=document.getElementById("s-hours");
+  if(t.segs){
+    hv.innerHTML = humanHours(t.segs).map(h=>
+      `<div class="row"><span>${h.days}</span><span>${h.time}</span></div>`).join("");
+  } else if(t.hours){
+    hv.innerHTML = `<div class="row"><span>Horaires</span><span class="raw">${t.hours}</span></div>`;
+  } else hv.innerHTML = `<div class="row"><span>Horaires</span><span>non renseignés</span></div>`;
+  const note=document.getElementById("s-note");
+  note.textContent = t.note && !t.oos ? t.note : "";
+  note.style.display = note.textContent ? "block" : "none";
+  renderCrowd(t);
+  document.getElementById("s-go").href =
+    `https://www.google.com/maps/dir/?api=1&destination=${t.lat},${t.lon}&travelmode=walking`;
+  document.getElementById("sheet").classList.add("open");
+}
+function closeSheet(){ document.getElementById("sheet").classList.remove("open"); current=null; }
+</script>
+</body>
+</html>
